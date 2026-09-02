@@ -11,6 +11,7 @@ import sys
 import logging
 import asyncio
 import html
+import urllib.parse
 from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any, Tuple
 
@@ -24,7 +25,6 @@ from telegram import (
 )
 from telegram.constants import ParseMode
 from telegram.ext import (
-    Application,
     ApplicationBuilder,
     CommandHandler,
     MessageHandler,
@@ -82,6 +82,7 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "btn_download": "📥 Download",
         "btn_share": "🔗 Share",
         "btn_cancel": "❌ Cancel",
+        "btn_web_search": "🌐 Search on Google",
         "about_text": "<b>📚 Islamic Library</b>\n\nA digital library for accessing and organizing authentic Islamic educational resources.\n\n<b>Brand:</b> Islamic Library\n<b>Developer:</b> Thalha Creations",
         "help_text": "<b>📖 How to use this bot:</b>\n\n• <b>📚 Library:</b> Browse all Islamic literature by pages.\n• <b>📂 Categories:</b> Discover books under specific topics.\n• <b>🔎 Search:</b> Type any author, title, or topic to search.\n• <b>📥 Download:</b> Click download inside any book page.\n• <b>🌐 Language:</b> Switch language anytime.\n• <b>/start or /home:</b> Return to the main menu.",
         "select_lang": "🌐 <b>Select your preferred language:</b>",
@@ -121,6 +122,7 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "btn_download": "📥 பதிவிறக்கு",
         "btn_share": "🔗 பகிர்",
         "btn_cancel": "❌ ரத்து",
+        "btn_web_search": "🌐 கூகுளில் தேடுக",
         "about_text": "<b>📚 Islamic Library</b>\n\nஇஸ்லாமிய கல்வி வளங்களை முறைப்படுத்தி வழங்கும் மின்னணு நூலகம்.\n\n<b>உருவாக்கம்:</b> Thalha Creations",
         "help_text": "<b>📖 போட்டைப் பயன்படுத்தும் முறை:</b>\n\n• <b>📚 நூலகம்:</b> அனைத்து புத்தகங்களையும் பக்கங்கள் வாரியாக பார்வையிட.\n• <b>📂 பிரிவுகள்:</b> தலைப்புகள் வாரியாக நூல்களைத் தேர்ந்தெடுக்க.\n• <b>🔎 தேடல்:</b> ஆசிரியர், தலைப்பு அல்லது குறிச்சொற்கள் மூலம் தேட.\n• <b>📥 பதிவிறக்கம்:</b> புத்தகத்தின் பக்கத்தில் உள்ள பதிவிறக்க பொத்தானை அழுத்தவும்.\n• <b>/home:</b> எந்த நேரத்திலும் முதன்மைப் பக்கத்திற்குத் திரும்ப.",
         "select_lang": "🌐 <b>உங்கள் மொழியைத் தேர்ந்தெடுக்கவும்:</b>",
@@ -160,6 +162,7 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "btn_download": "📥 تحميل",
         "btn_share": "🔗 مشاركة",
         "btn_cancel": "❌ إلغاء",
+        "btn_web_search": "🌐 البحث في جوجل",
         "about_text": "<b>📚 المكتبة الإسلامية</b>\n\nمكتبة رقمية لتنظيم وتوفير المواد التعليمية الإسلامية.\n\n<b>تم التطوير بواسطة:</b> Thalha Creations",
         "help_text": "<b>📖 دليل الاستخدام:</b>\n\n• <b>📚 المكتبة:</b> تصفح جميع الكتب والمواد.\n• <b>📂 الأقسام:</b> استعراض المواد حسب التصنيف.\n• <b>🔎 بحث:</b> ابحث بالعنوان أو اسم المؤلف.\n• <b>📥 تحميل:</b> اضغط على زر التحميل للحصول على الملف مباشرة.\n• <b>/home:</b> العودة إلى القائمة الرئيسية.",
         "select_lang": "🌐 <b>اختر لغتك المفضلة:</b>",
@@ -199,6 +202,7 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "btn_download": "📥 ڈاؤن لوڈ",
         "btn_share": "🔗 شیئر",
         "btn_cancel": "❌ منسوخ",
+        "btn_web_search": "🌐 گوگل پر تلاش کریں",
         "about_text": "<b>📚 اسلامی لائبریری</b>\n\nاسلامی تعلیمی مواد اور کتب کی فراہمی کے لیے ایک ڈیجیٹل پلیٹ فارم۔\n\n<b>تیار کردہ:</b> Thalha Creations",
         "help_text": "<b>📖 بوٹ استعمال کرنے کا طریقہ:</b>\n\n• <b>📚 لائبریری:</b> تمام کتب کی فہرست براؤز کریں۔\n• <b>📂 زمرہ جات:</b> مخصوص موضوع کے تحت کتب دیکھیں۔\n• <b>🔎 تلاش:</b> مصنف یا کتاب کے نام سے سرچ کریں۔\n• <b>📥 ڈاؤن لوڈ:</b> فائل حاصل کرنے کے لیے ڈاؤن لوڈ بٹن دبائیں۔\n• <b>/home:</b> مین مینو پر واپس جائیں۔",
         "select_lang": "🌐 <b>اپنی پسندیدہ زبان کا انتخاب کریں:</b>",
@@ -240,7 +244,6 @@ class Database:
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute("PRAGMA foreign_keys = ON;")
             
-            # Users table
             await db.execute("""
                 CREATE TABLE IF NOT EXISTS users (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -253,7 +256,6 @@ class Database:
                 );
             """)
 
-            # Categories table
             await db.execute("""
                 CREATE TABLE IF NOT EXISTS categories (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -262,7 +264,6 @@ class Database:
                 );
             """)
 
-            # Books table
             await db.execute("""
                 CREATE TABLE IF NOT EXISTS books (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -285,14 +286,12 @@ class Database:
                 );
             """)
 
-            # Indexes for search
             await db.execute("CREATE INDEX IF NOT EXISTS idx_books_title ON books(title);")
             await db.execute("CREATE INDEX IF NOT EXISTS idx_books_author ON books(author);")
             await db.execute("CREATE INDEX IF NOT EXISTS idx_books_keywords ON books(keywords);")
             await db.execute("CREATE INDEX IF NOT EXISTS idx_books_category ON books(category_id);")
             await db.execute("CREATE INDEX IF NOT EXISTS idx_books_created ON books(created_at);")
 
-            # Seed default categories if empty
             cursor = await db.execute("SELECT COUNT(*) FROM categories;")
             count = (await cursor.fetchone())[0]
             if count == 0:
@@ -591,7 +590,6 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     lang = await db.upsert_user(user.id, user.username, user.first_name)
     
-    # Deep Linking
     if context.args and len(context.args) > 0:
         arg = context.args[0]
         if arg.startswith("book_"):
@@ -630,7 +628,7 @@ async def show_book_details(update: Update, context: ContextTypes.DEFAULT_TYPE, 
     text = format_book_details(book, lang)
     
     bot_username = context.bot.username or "IslamicLibraryBot"
-    share_url = f"https://t.me/share/url?url=https://t.me/{bot_username}?start=book_{book_id}&text={html.escape(book['title'])}"
+    share_url = f"https://t.me/share/url?url=https://t.me/{bot_username}?start=book_{book_id}&text={urllib.parse.quote(book['title'])}"
     
     keyboard = [
         [InlineKeyboardButton(t("btn_download", lang), callback_data=f"book_dl:{book_id}")],
@@ -836,7 +834,7 @@ async def user_callback_handler(update: Update, context: ContextTypes.DEFAULT_TY
         await query.message.edit_text(t("search_prompt", lang), parse_mode=ParseMode.HTML, reply_markup=kb)
 
 # ------------------------------------------------------------------
-# 6. Search Engine Message Flow
+# 6. Search Engine Message Flow & Web Fallback
 # ------------------------------------------------------------------
 async def handle_user_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text:
@@ -853,9 +851,18 @@ async def handle_user_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def run_search_and_display(update: Update, context: ContextTypes.DEFAULT_TYPE, query_text: str, page: int, lang: str):
     books, total = await db.search_books(query_text, page=page, page_size=10)
     
+    # பிரவுசரில் நேரடியாக தேட Google URL
+    encoded_query = urllib.parse.quote(query_text)
+    google_search_url = f"https://www.google.com/search?q={encoded_query}+islamic+pdf"
+
     if total == 0:
-        text = f"🔎 <b>Search:</b> <code>{html.escape(query_text)}</code>\n\n{t('no_books', lang)}"
+        text = (
+            f"🔎 <b>Search:</b> <code>{html.escape(query_text)}</code>\n\n"
+            f"{t('no_books', lang)}\n\n"
+            "🌐 <i>நீங்கள் தேடிய புத்தகம் போட்டில் இல்லை என்றால், கீழே உள்ள பட்டனை கிளிக் செய்து கூகுளில் நேரடியாக தேடி பதிவிறக்கலாம்:</i>"
+        )
         kb = InlineKeyboardMarkup([
+            [InlineKeyboardButton(t("btn_web_search", lang), url=google_search_url)],
             [InlineKeyboardButton(t("btn_search", lang), callback_data="user_search")],
             [InlineKeyboardButton(t("btn_home", lang), callback_data="user_home")]
         ])
@@ -874,8 +881,11 @@ async def run_search_and_display(update: Update, context: ContextTypes.DEFAULT_T
         title_btn = f"📖 {b['title']}" + (f" - {b['author']}" if b.get('author') else "")
         keyboard.append([InlineKeyboardButton(title_btn, callback_data=f"book_view:{b['id']}")])
     
-    nav_row = get_pagination_row(page, total, 10, f"search_page", lang)
+    nav_row = get_pagination_row(page, total, 10, "search_page", lang)
     keyboard.append(nav_row)
+    keyboard.append([
+        InlineKeyboardButton(t("btn_web_search", lang), url=google_search_url),
+    ])
     keyboard.append([
         InlineKeyboardButton(t("btn_search", lang), callback_data="user_search"),
         InlineKeyboardButton(t("btn_home", lang), callback_data="user_home")
@@ -931,7 +941,8 @@ async def cmd_backup(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     if os.path.exists(DATABASE_PATH):
         await update.message.reply_text("📦 Preparing database backup...")
-        await update.message.reply_document(document=open(DATABASE_PATH, "rb"), filename=f"backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db")
+        with open(DATABASE_PATH, "rb") as f:
+            await update.message.reply_document(document=f, filename=f"backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db")
     else:
         await update.message.reply_text("⚠️ Database file not found.")
 
@@ -1064,7 +1075,7 @@ async def admin_callback_handler(update: Update, context: ContextTypes.DEFAULT_T
         await query.message.edit_text("📂 <b>Manage Categories</b>:", parse_mode=ParseMode.HTML, reply_markup=InlineKeyboardMarkup(keyboard))
 
 # ------------------------------------------------------------------
-# 8. Add Book Conversation (Step-by-Step)
+# 8. Add Book Conversation (Step-by-Step) [FIXED]
 # ------------------------------------------------------------------
 (
     ADD_CAT,
@@ -1186,10 +1197,10 @@ async def add_book_file_received(update: Update, context: ContextTypes.DEFAULT_T
         file_size = msg.photo[-1].file_size or 0
 
     if not file_id:
-        await update.message.reply_text("⚠️ Invalid file format. Please upload a valid document, audio, video, or photo:")
+        await update.message.reply_text("⚠️ Invalid file. Please upload a valid Document, PDF, Audio, Video, or Photo:")
         return ADD_FILE
 
-    b = context.user_data["new_book"]
+    b = context.user_data.get("new_book", {})
     b["file_id"] = file_id
     b["file_type"] = file_type
     b["file_name"] = file_name
@@ -1198,7 +1209,7 @@ async def add_book_file_received(update: Update, context: ContextTypes.DEFAULT_T
 
     preview = (
         "📋 <b>Step 8: Review & Confirm Details</b>\n\n"
-        f"📖 <b>Title:</b> {html.escape(b['title'])}\n"
+        f"📖 <b>Title:</b> {html.escape(b.get('title', ''))}\n"
         f"📂 <b>Category:</b> {html.escape(b.get('category_name') or '')}\n"
         f"✍️ <b>Author:</b> {html.escape(b.get('author') or 'N/A')}\n"
         f"📝 <b>Description:</b> {html.escape(b.get('description') or 'N/A')}\n"
@@ -1219,8 +1230,8 @@ async def add_book_save_execution(update: Update, context: ContextTypes.DEFAULT_
     query = update.callback_query
     await query.answer()
     b = context.user_data.get("new_book")
-    if not b:
-        await query.message.edit_text("⚠️ Session expired.")
+    if not b or "title" not in b:
+        await query.message.reply_text("⚠️ Session expired or invalid details.")
         return ConversationHandler.END
 
     book_id = await db.add_book(b)
@@ -1393,12 +1404,19 @@ async def broadcast_send_exec(update: Update, context: ContextTypes.DEFAULT_TYPE
 # 12. Cancel & Global Error Handling
 # ------------------------------------------------------------------
 async def cancel_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    context.user_data.clear()
+    context.user_data.pop("new_book", None)
+    context.user_data.pop("edit_book_id", None)
+    context.user_data.pop("edit_field", None)
+    context.user_data.pop("ren_cat_id", None)
+    context.user_data.pop("broadcast_msg_id", None)
+    context.user_data.pop("broadcast_chat_id", None)
+    
+    msg = "❌ Operation cancelled."
     if update.callback_query:
         await update.callback_query.answer()
-        await update.callback_query.message.edit_text("❌ Operation cancelled.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 Home", callback_data="user_home")]]))
+        await update.callback_query.message.reply_text(msg, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 Home", callback_data="user_home")]]))
     else:
-        await update.message.reply_text("❌ Operation cancelled.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 Home", callback_data="user_home")]]))
+        await update.message.reply_text(msg, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 Home", callback_data="user_home")]]))
     return ConversationHandler.END
 
 async def global_error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
@@ -1416,7 +1434,6 @@ async def async_main():
     await db.init()
     logger.info("📚 Database initialized successfully.")
 
-    # Timeout limits increased here to prevent TimedOut error
     application = (
         ApplicationBuilder()
         .token(BOT_TOKEN)
@@ -1427,7 +1444,7 @@ async def async_main():
         .build()
     )
 
-    # Conversation: Add Book
+    # Conversation: Add Book (Fixed Filters and Fallbacks)
     add_book_conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(start_add_book, pattern="^admin_add_book$")],
         states={
@@ -1437,7 +1454,12 @@ async def async_main():
             ADD_AUTHOR: [MessageHandler(filters.TEXT | filters.COMMAND, add_book_author_received)],
             ADD_KEYWORDS: [MessageHandler(filters.TEXT | filters.COMMAND, add_book_keywords_received)],
             ADD_REF: [MessageHandler(filters.TEXT | filters.COMMAND, add_book_ref_received)],
-            ADD_FILE: [MessageHandler(filters.Document.ALL | filters.AUDIO | filters.VIDEO | filters.PHOTO, add_book_file_received)],
+            ADD_FILE: [
+                MessageHandler(
+                    filters.Document.ALL | filters.AUDIO | filters.VIDEO | filters.PHOTO,
+                    add_book_file_received
+                )
+            ],
             ADD_CONFIRM: [CallbackQueryHandler(add_book_save_execution, pattern="^addbk_save$")],
         },
         fallbacks=[
@@ -1445,6 +1467,7 @@ async def async_main():
             CallbackQueryHandler(cancel_conversation, pattern="^cancel_conv$"),
         ],
         per_user=True,
+        per_chat=True,
     )
 
     # Conversation: Edit Book
@@ -1462,6 +1485,7 @@ async def async_main():
             CallbackQueryHandler(cancel_conversation, pattern="^cancel_conv$"),
         ],
         per_user=True,
+        per_chat=True,
     )
 
     # Conversation: Add Category
@@ -1475,6 +1499,7 @@ async def async_main():
             CallbackQueryHandler(cancel_conversation, pattern="^cancel_conv$"),
         ],
         per_user=True,
+        per_chat=True,
     )
 
     # Conversation: Rename Category
@@ -1488,6 +1513,7 @@ async def async_main():
             CallbackQueryHandler(cancel_conversation, pattern="^cancel_conv$"),
         ],
         per_user=True,
+        per_chat=True,
     )
 
     # Conversation: Broadcast
@@ -1502,6 +1528,7 @@ async def async_main():
             CallbackQueryHandler(cancel_conversation, pattern="^cancel_conv$"),
         ],
         per_user=True,
+        per_chat=True,
     )
 
     # Register Handlers
